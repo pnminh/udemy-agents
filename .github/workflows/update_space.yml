@@ -37,4 +37,4 @@ jobs:
       run: python -c 'import os, huggingface_hub; huggingface_hub.login(token=os.environ["HF_TOKEN"])'
 
     - name: Deploy to Spaces
-      run: gradio deploy --space "pnminh232/udemy-agents-foundations" --app-file "app.py" --title "My Foundation App"
+      run: gradio deploy
