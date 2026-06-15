@@ -1,4 +1,5 @@
 ### Foundations
+This is the Foundations section of the udemy-agents project.
 ---
 title: udemy-agents-foundations
 app_file: app.py
