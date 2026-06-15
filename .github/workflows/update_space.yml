@@ -5,7 +5,7 @@ on:
     branches:
       - feature/foundations
     paths:
-      - 'apps/foundation/**' # Only trigger if files in this subfolder change
+      - 'apps/foundations/**' # Only trigger if files in this subfolder change
 
 jobs:
   build:
@@ -14,7 +14,7 @@ jobs:
     # This sets the default execution path for all 'run' steps to your app folder
     defaults:
       run:
-        working-directory: apps/foundation
+        working-directory: apps/foundations
 
     steps:
     - name: Checkout code
