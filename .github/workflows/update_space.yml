@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - 'apps/foundations/**' # Only trigger if files in this subfolder change
-
+  workflow_dispatch:
 jobs:
   build:
     runs-on: ubuntu-latest
