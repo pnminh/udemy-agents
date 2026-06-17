@@ -6,7 +6,7 @@ RUN pip install uv
 
 COPY pyproject.toml uv.lock ./ 
 
-RUN uv sync --system-type=linux
+RUN uv sync
 
 COPY . . 
 
