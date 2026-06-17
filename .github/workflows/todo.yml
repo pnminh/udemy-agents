@@ -1,4 +1,4 @@
-name: Run Python script
+name: Deploy todo app
 
 on:
   push:
