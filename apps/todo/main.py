@@ -97,15 +97,7 @@ Provide your solution in Rich console markup without code blocks.
 Do not ask the user questions or clarification; respond only with the answer after using your tools.
 """
 
-    messages = [
-        {"role": "system", "content": system_message_content}
-    ]
-
-    for human_message, ai_message in history:
-        messages.append({"role": "user", "content": human_message})
-        messages.append({"role": "assistant", "content": ai_message})
-    
-    messages.append({"role": "user", "content": message})
+    messages = [{"role": "system", "content": system_message_content}] + history + [{"role": "user", "content": message}]
 
     # Yield an initial message to show activity
     yield "Thinking..."
@@ -158,6 +150,7 @@ Do not ask the user questions or clarification; respond only with the answer aft
             yield final_response  # Yield the final response
             todos.clear()  # Reset todos for the next task
             completed.clear()  # Reset completed status for the next task
+    return messages
 
 if __name__ == "__main__":
     print("Starting Gradio ChatInterface...")

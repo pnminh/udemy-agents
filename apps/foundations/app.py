@@ -81,13 +81,13 @@ class Me:
             base_url=os.getenv("DEEPSEEK_OPEN_API_ENDPOINT")
         )
         self.name = "Minh Pham"
-        reader = PdfReader("me/linkedin.pdf")
+        reader = PdfReader(os.path.join(os.path.dirname(__file__), "me", "linkedin.pdf"))
         self.linkedin = ""
         for page in reader.pages:
             text = page.extract_text()
             if text:
                 self.linkedin += text
-        with open("me/summary.txt", "r", encoding="utf-8") as f:
+        with open(os.path.join(os.path.dirname(__file__), "me", "summary.txt"), "r", encoding="utf-8") as f:
             self.summary = f.read()
 
 
