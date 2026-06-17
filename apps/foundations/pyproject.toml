@@ -10,5 +10,5 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "requests>=2.34.2",
     "pydub",
-    "pyaudioop",
+    "audioop-lts; python_version >= '3.13'",
 ]
