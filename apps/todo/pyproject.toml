@@ -1,12 +1,14 @@
 [project]
-name = "foundations"
+name = "todo"
 version = "0.1.0"
-description = "Project for foundations"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
 dependencies = [
     "gradio>=4.0.0",
     "openai>=2.42.0",
-    "openai-agents>=0.17.5",
     "pypdf>=6.13.2",
     "python-dotenv>=1.2.2",
     "requests>=2.34.2",
+    "rich>=15.0.0",
 ]
