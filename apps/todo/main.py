@@ -154,4 +154,4 @@ Do not ask the user questions or clarification; respond only with the answer aft
 
 if __name__ == "__main__":
     print("Starting Gradio ChatInterface...")
-    gr.ChatInterface(me.chat).launch(server_name="0.0.0.0", server_port=7860)    
+    gr.ChatInterface(chat).launch(server_name="0.0.0.0", server_port=7860)    
