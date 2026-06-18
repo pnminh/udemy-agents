@@ -7,7 +7,9 @@ matplotlib.use("Agg")
 import gradio as gr
 import matplotlib.pyplot as plt
 from dotenv import load_dotenv
+from gradio.themes import Soft as SoftTheme
 from openai import OpenAI
+from openai.types.chat import ChatCompletionToolParam
 
 load_dotenv(override=True)
 
@@ -77,7 +79,9 @@ show_picture_schema = {
     },
 }
 
-tools = [{"type": "function", "function": show_picture_schema}]
+tools: list[ChatCompletionToolParam] = [
+    {"type": "function", "function": show_picture_schema}  # type: ignore[typeddict-item]
+]
 
 
 def show_picture(number: int) -> str:
@@ -170,8 +174,7 @@ def chat(message: str, history: list):
         {"role": "user", "content": message},
     ]
 
-    done = False
-    while not done:
+    while True:
         response = client.chat.completions.create(
             model=MODEL,
             messages=messages,
@@ -193,7 +196,7 @@ def chat(message: str, history: list):
             tool_results = handle_tool_call(tool_calls)
             messages.extend(tool_results)
         else:
-            done = True
+            break
 
     final_content = response.choices[0].message.content or ""
 
@@ -241,4 +244,4 @@ if __name__ == "__main__":
         msg.submit(respond, [msg, chatbot], [chatbot, image_display])
         btn.click(respond, [msg, chatbot], [chatbot, image_display])
 
-    demo.launch(server_name="0.0.0.0", server_port=7860, theme=gr.themes.Soft())
+    demo.launch(server_name="0.0.0.0", server_port=7860, theme=SoftTheme())
