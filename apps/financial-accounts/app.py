@@ -1,5 +1,11 @@
+import contextlib
+import getpass
+import io
 import json
 import os
+import pickle
+import queue
+import threading
 
 import gradio as gr
 import robin_stocks.robinhood as r
@@ -28,90 +34,257 @@ MODEL = os.getenv("MODEL", "deepseek-v4-flash")
 # Authentication state
 # ---------------------------------------------------------------------------
 SESSION_DIR = os.path.dirname(os.path.abspath(__file__))
-SESSION_FILE = os.path.join(SESSION_DIR, ".robinhood_session.pickle")
+SESSION_STORAGE = os.path.join(SESSION_DIR, ".robinhood_session")
+PICKLE_FILE = os.path.join(SESSION_STORAGE, "robinhood.pickle")
 
 robin_stocks_logged_in = False
 logged_in_email: str | None = None
 
-# Try stored session before showing the login form
-if os.path.exists(SESSION_FILE):
-    env_email = os.getenv("ROBINHOOD_EMAIL")
-    try:
-        r.login(
-            env_email or "",
-            "",
-            store_session=True,
-            pickle_path=SESSION_FILE,
-        )
-        robin_stocks_logged_in = True
-        logged_in_email = env_email
-        print("✅ Logged into Robinhood via stored session", flush=True)
-    except Exception as e:
-        print(f"⚠️  Stored session expired: {e}", flush=True)
-        os.remove(SESSION_FILE)
+print("🔧 Checking for stored session...", flush=True)
+print(f"   Storage dir: {SESSION_STORAGE}", flush=True)
+print(f"   Pickle file: {PICKLE_FILE}", flush=True)
+
+if os.path.exists(SESSION_STORAGE):
+    print("   SESSION_STORAGE exists", flush=True)
+    if os.path.isfile(SESSION_STORAGE):
+        # Old format — was stored as a single file, now it's a directory
+        print("   Removing old single-file session", flush=True)
+        os.remove(SESSION_STORAGE)
+        print("   Old session removed", flush=True)
+    elif os.path.isdir(SESSION_STORAGE):
+        print("   SESSION_STORAGE is a directory", flush=True)
+        if os.path.exists(PICKLE_FILE):
+            print("   PICKLE_FILE exists, loading...", flush=True)
+            try:
+                with open(PICKLE_FILE, "rb") as f:
+                    auth = pickle.load(f)
+                stored_email = (
+                    getattr(auth, "username", "pnminh232@gmail.com")
+                    or "pnminh232@gmail.com"
+                )
+
+                # Use r.login() to fully initialize the session
+                old_getpass = getpass.getpass
+                getpass.getpass = lambda prompt="": ""
+                try:
+                    with (
+                        contextlib.redirect_stdout(io.StringIO()),
+                        contextlib.redirect_stderr(io.StringIO()),
+                    ):
+                        r.login(
+                            stored_email,
+                            "",
+                            store_session=True,
+                            pickle_path=SESSION_STORAGE,
+                        )
+                    robin_stocks_logged_in = True
+                    logged_in_email = stored_email
+                    print(f"✅ Session loaded for {logged_in_email}", flush=True)
+                except Exception as e:
+                    print(f"⚠️ r.login() failed: {type(e).__name__}: {e}", flush=True)
+                    import shutil
+
+                    shutil.rmtree(SESSION_STORAGE)
+                    print("   Session removed", flush=True)
+                finally:
+                    getpass.getpass = old_getpass
+            except Exception as e:
+                print(f"⚠️ Failed to load pickle: {type(e).__name__}: {e}", flush=True)
+                import shutil
+
+                shutil.rmtree(SESSION_STORAGE)
+                print("   Corrupted session removed", flush=True)
+        else:
+            print("   No PICKLE_FILE inside directory", flush=True)
+            import shutil
+
+            shutil.rmtree(SESSION_STORAGE)
+            print("   Empty session dir removed", flush=True)
+else:
+    print("   No stored session found", flush=True)
+
+print(f"🔧 Login state: robin_stocks_logged_in={robin_stocks_logged_in}", flush=True)
+print(
+    f"🔧 UI will show: {'chat' if robin_stocks_logged_in else 'login form'}", flush=True
+)
 
 
-def do_login(email: str, password: str) -> str:
-    """Attempt Robinhood login. Returns status message."""
+def do_login(email: str, password: str):
+    """Attempt Robinhood login. Yields status updates in real-time as they come from robin_stocks."""
     global robin_stocks_logged_in, logged_in_email
-    try:
-        r.login(
-            email,
-            password,
-            store_session=True,
-            pickle_path=SESSION_FILE,
-        )
+
+    yield "🔄 Connecting to Robinhood..."
+
+    msg_queue: queue.Queue[str | None] = queue.Queue()
+    exception_container: list[Exception | None] = []
+
+    class StreamCapture(io.StringIO):
+        """Captures writes and pushes each new unique line into the queue in real-time."""
+
+        _last: str = ""
+
+        def write(self, s) -> int:
+            stripped = s.strip()
+            if stripped and stripped != self._last:
+                self._last = stripped
+                msg_queue.put(stripped)
+            return super().write(s)
+
+        def flush(self):
+            pass
+
+    captured_out = StreamCapture()
+    captured_err = StreamCapture()
+
+    def target():
+        try:
+            with (
+                contextlib.redirect_stdout(captured_out),
+                contextlib.redirect_stderr(captured_err),
+            ):
+                r.login(
+                    email,
+                    password,
+                    store_session=True,
+                    pickle_path=SESSION_STORAGE,
+                )
+            exception_container.append(None)
+        except Exception as e:
+            exception_container.append(e)
+        finally:
+            msg_queue.put(None)  # sentinel — signals we're done
+
+    thread = threading.Thread(target=target, daemon=True)
+    thread.start()
+
+    # Read messages from the queue as they arrive (real-time)
+    while True:
+        try:
+            msg = msg_queue.get(timeout=0.3)
+            if msg is None:  # sentinel
+                break
+            # Flush any accumulated content still in the stream
+            remaining = captured_out.getvalue().strip()
+            if remaining and remaining != msg:
+                for line in remaining.split("\n"):
+                    line = line.strip()
+                    if line and line != msg:
+                        yield line
+            yield msg
+        except queue.Empty:
+            if not thread.is_alive():
+                # Flush any remaining content
+                for s in (captured_out, captured_err):
+                    remaining = s.getvalue().strip()
+                    if remaining:
+                        for line in remaining.split("\n"):
+                            line = line.strip()
+                            if line:
+                                yield line
+                break
+
+    if exception_container and exception_container[0] is None:
         robin_stocks_logged_in = True
         logged_in_email = email
-        return f"✅ Logged in as {email}"
-    except Exception as e:
-        return f"❌ Login failed: {e}"
+        file_exists = os.path.exists(SESSION_STORAGE) and os.path.exists(PICKLE_FILE)
+        print(f"🔧 Login success. Session file exists: {file_exists}", flush=True)
+        yield f"✅ Logged in as {email}"
+    else:
+        err = (
+            exception_container[0]
+            if exception_container
+            else Exception("Unknown error")
+        )
+        yield f"❌ Login failed: {err}"
+
+
+def expire_session() -> None:
+    """Reset auth state and delete stored session when token expires."""
+    global robin_stocks_logged_in, logged_in_email
+    robin_stocks_logged_in = False
+    logged_in_email = None
+    import shutil
+
+    if os.path.exists(SESSION_STORAGE):
+        shutil.rmtree(SESSION_STORAGE)
 
 
 # ---------------------------------------------------------------------------
 # Tool implementations
 # ---------------------------------------------------------------------------
-def get_portfolio_summary() -> str:
-    """Return overall portfolio value, buying power, and cash balance."""
+def _is_auth_error(e: Exception) -> bool:
+    """Check if an exception is related to expired/invalid authentication."""
+    msg = str(e).lower()
+    keywords = [
+        "401",
+        "unauthorized",
+        "session expired",
+        "authenticate",
+        "token expired",
+        "access_denied",
+        "not authenticated",
+    ]
+    return any(k in msg for k in keywords)
+
+
+def _call_or_expire(fn, *args, **kwargs) -> str:
+    """Call a robin_stocks function. If it fails with an auth error, expire the session."""
     try:
-        portfolios = r.account.build_user_profile()
+        result = fn(*args, **kwargs)
+        return json.dumps(result) if not isinstance(result, str) else result
     except Exception as e:
+        print(f"🔧 API call failed: {type(e).__name__}: {e}", flush=True)
+        if _is_auth_error(e):
+            print("   → Auth error detected, expiring session", flush=True)
+            expire_session()
+            return json.dumps({"session_expired": True, "error": str(e)})
         return json.dumps({"error": str(e)})
 
-    return json.dumps(
-        {
-            "total_equity": portfolios.get("equity", "N/A"),
-            "extended_hours_equity": portfolios.get("extended_hours_equity", "N/A"),
-            "buying_power": portfolios.get("buying_power", "N/A"),
-            "cash": portfolios.get("cash", "N/A"),
-        }
-    )
+
+def get_portfolio_summary() -> str:
+    """Return overall portfolio value, buying power, and cash balance."""
+    raw = _call_or_expire(r.account.build_user_profile)
+    try:
+        data = json.loads(raw)
+        if "session_expired" in data or "error" in data:
+            return raw
+        return json.dumps(
+            {
+                "total_equity": data.get("equity", "N/A"),
+                "extended_hours_equity": data.get("extended_hours_equity", "N/A"),
+                "buying_power": data.get("buying_power", "N/A"),
+                "cash": data.get("cash", "N/A"),
+            }
+        )
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return raw
 
 
 def get_holdings() -> str:
     """Return all stock/ETF positions currently held."""
+    result = _call_or_expire(r.account.build_holdings)
+    # Parse and format the holdings list
     try:
-        positions = r.account.build_holdings()
-    except Exception as e:
-        return json.dumps({"error": str(e)})
-
-    if not positions:
-        return json.dumps({"holdings": [], "message": "No positions found."})
-
-    holdings_list = []
-    for symbol, data in positions.items():
-        holdings_list.append(
-            {
-                "symbol": symbol,
-                "quantity": float(data.get("quantity", 0)),
-                "avg_buy_price": float(data.get("average_buy_price", 0)),
-                "equity": float(data.get("equity", 0)),
-                "percent_change": float(data.get("percent_change", 0)),
-                "equity_change": float(data.get("equity_change", 0)),
-            }
-        )
-
-    return json.dumps({"holdings": holdings_list})
+        data = json.loads(result)
+        if "session_expired" in data or "error" in data:
+            return result
+        if not data:
+            return json.dumps({"holdings": [], "message": "No positions found."})
+        holdings_list = []
+        for symbol, info in data.items():
+            holdings_list.append(
+                {
+                    "symbol": symbol,
+                    "quantity": float(info.get("quantity", 0)),
+                    "avg_buy_price": float(info.get("average_buy_price", 0)),
+                    "equity": float(info.get("equity", 0)),
+                    "percent_change": float(info.get("percent_change", 0)),
+                    "equity_change": float(info.get("equity_change", 0)),
+                }
+            )
+        return json.dumps({"holdings": holdings_list})
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return result
 
 
 def get_stock_price(symbol: str) -> str:
@@ -120,30 +293,34 @@ def get_stock_price(symbol: str) -> str:
     Args:
         symbol: The stock ticker symbol (e.g. AAPL, TSLA, MSFT).
     """
+    raw = _call_or_expire(r.stocks.get_latest_price, symbol, includeExtendedHours=False)
     try:
-        quote = r.stocks.get_latest_price(symbol, includeExtendedHours=False)
-        if quote:
-            return json.dumps({"symbol": symbol.upper(), "price": quote[0]})
+        data = json.loads(raw)
+        if isinstance(data, list) and data:
+            return json.dumps({"symbol": symbol.upper(), "price": data[0]})
+        if isinstance(data, dict) and ("session_expired" in data or "error" in data):
+            return raw
         return json.dumps({"error": f"Could not fetch price for {symbol}"})
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+    except (json.JSONDecodeError, TypeError):
+        return raw
 
 
 def get_account_info() -> str:
     """Return basic stock account information."""
+    raw = _call_or_expire(r.profiles.load_account_profile)
     try:
-        profile = r.profiles.load_account_profile()
-    except Exception as e:
-        return json.dumps({"error": str(e)})
-
-    info: dict[str, object] = {
-        "email": logged_in_email or "unknown",
-    }
-    if isinstance(profile, dict):
-        info["account_number"] = profile.get("account_number", "N/A")
-        info["status"] = profile.get("status", "N/A")
-
-    return json.dumps(info)
+        data = json.loads(raw)
+        if isinstance(data, dict) and ("session_expired" in data or "error" in data):
+            return raw
+        info: dict[str, object] = {
+            "email": logged_in_email or "unknown",
+        }
+        if isinstance(data, dict):
+            info["account_number"] = data.get("account_number", "N/A")
+            info["status"] = data.get("status", "N/A")
+        return json.dumps(info)
+    except (json.JSONDecodeError, TypeError):
+        return raw
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +400,7 @@ TOOL_DISPATCH = {
 
 def handle_tool_call(tool_calls) -> list[dict]:
     """Execute tool calls and return the result messages."""
+    global robin_stocks_logged_in
     results = []
     for tool_call in tool_calls:
         tool_name = tool_call.function.name
@@ -234,6 +412,14 @@ def handle_tool_call(tool_calls) -> list[dict]:
             result = func(**arguments)
         else:
             result = json.dumps({"error": f"Unknown tool: {tool_name}"})
+
+        # Detect session expiry and break out of any further tool calls
+        try:
+            parsed = json.loads(result)
+            if isinstance(parsed, dict) and parsed.get("session_expired"):
+                robin_stocks_logged_in = False
+        except (json.JSONDecodeError, TypeError):
+            pass
 
         results.append(
             {
@@ -256,9 +442,13 @@ SYSTEM_PROMPT = (
     "- Stock prices: current price for any ticker symbol\n"
     "- Account information\n"
     "\n"
-    "Be clear and informative. Present financial data in a readable format. "
+    "If a tool returns a session_expired error, tell the user their session has expired "
+    "and they need to log in again using the login form.\n"
     "If a tool returns an error, simply say the data is currently unavailable."
 )
+
+
+SESSION_EXPIRED_MARKER = "__SESSION_EXPIRED__"
 
 
 # ---------------------------------------------------------------------------
@@ -285,19 +475,19 @@ def normalize_history(history: list) -> list:
     return normalized
 
 
-def chat(message: str, history: list) -> str:
-    """Process user input through the agent and return a response."""
+def chat(message: str, history: list):
+    """Generator. Yields thinking steps, then yields the final response."""
     if not robin_stocks_logged_in:
-        return (
-            "I'm not connected to Robinhood right now. "
-            "Please log in using the form above first."
-        )
+        yield SESSION_EXPIRED_MARKER
+        return
 
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         *normalize_history(history),
         {"role": "user", "content": message},
     ]
+
+    yield "🤔 Thinking..."
 
     while True:
         response = client.chat.completions.create(
@@ -311,6 +501,24 @@ def chat(message: str, history: list) -> str:
         if finish_reason == "tool_calls":
             assistant_msg = response.choices[0].message
             tool_calls = assistant_msg.tool_calls
+
+            # Show agent's reasoning
+            if assistant_msg.content:
+                yield f"🤔 {assistant_msg.content}"
+
+            # Show each tool being called
+            if tool_calls:
+                for tc in tool_calls:
+                    name = tc.function.name  # type: ignore[union-attr]
+                    args = json.loads(tc.function.arguments)  # type: ignore[union-attr]
+                    descs = {
+                        "get_portfolio_summary": "Fetching portfolio summary...",
+                        "get_holdings": "Fetching stock holdings...",
+                        "get_stock_price": f"Looking up price for {args.get('symbol', '?')}...",
+                        "get_account_info": "Fetching account info...",
+                    }
+                    yield f"⚙️ {descs.get(name, name)}"
+
             messages.append(
                 {
                     "role": "assistant",
@@ -320,10 +528,33 @@ def chat(message: str, history: list) -> str:
             )
             tool_results = handle_tool_call(tool_calls)
             messages.extend(tool_results)
+
+            # Show tool results
+            for tr in tool_results:
+                parsed = json.loads(tr["content"])
+                if isinstance(parsed, dict):
+                    if parsed.get("session_expired"):
+                        yield "🔒 Session expired. Please log in again."
+                        yield SESSION_EXPIRED_MARKER
+                        return
+                    if "holdings" in parsed:
+                        count = len(parsed["holdings"])
+                        yield f"✅ Found {count} position{'s' if count != 1 else ''}"
+                    elif "total_equity" in parsed:
+                        yield "✅ Portfolio summary retrieved"
+                    elif "price" in parsed:
+                        yield f"✅ {parsed['symbol']} price: ${parsed['price']}"
+                    elif "error" in parsed:
+                        yield f"⚠️ {parsed['error']}"
+                    else:
+                        yield "✅ Done"
+                else:
+                    yield "✅ Done"
         else:
             break
 
-    return response.choices[0].message.content or ""
+    final = response.choices[0].message.content or ""
+    yield final
 
 
 # ---------------------------------------------------------------------------
@@ -364,33 +595,77 @@ if __name__ == "__main__":
 
         # --- Login handler ---
         def on_login(email, password):
-            status = do_login(email, password)
-            if robin_stocks_logged_in:
-                return (
-                    gr.update(visible=False),  # hide login box
-                    gr.update(visible=True),  # show chat box
-                    f"✅ Logged in as {email}",
+            status = ""
+            for status in do_login(email, password):
+                yield (
+                    gr.update(visible=not robin_stocks_logged_in),
+                    gr.update(visible=robin_stocks_logged_in),
+                    status,
+                    gr.update(interactive=False),
                 )
-            return (
-                gr.update(visible=True),  # keep login box
-                gr.update(visible=False),  # keep chat hidden
-                f"❌ {status}",
-            )
+            # Re-enable button if login failed (form is still visible)
+            if not robin_stocks_logged_in:
+                yield (
+                    gr.update(visible=True),
+                    gr.update(visible=False),
+                    status,
+                    gr.update(interactive=True),
+                )
 
         login_btn.click(
             fn=on_login,
             inputs=[login_email, login_password],
-            outputs=[login_box, chat_box, login_status],
+            outputs=[login_box, chat_box, login_status, login_btn],
+        )
+        login_password.submit(
+            fn=on_login,
+            inputs=[login_email, login_password],
+            outputs=[login_box, chat_box, login_status, login_btn],
         )
 
         # --- Chat handler ---
         def respond(user_msg, chat_history):
-            bot_msg = chat(user_msg, chat_history)
+            # Show user message, clear textbox, disable send button
             chat_history.append({"role": "user", "content": user_msg})
-            chat_history.append({"role": "assistant", "content": bot_msg})
-            return chat_history
+            yield (
+                chat_history,
+                gr.update(value="", interactive=False),
+                gr.update(interactive=False),
+                gr.update(),
+                gr.update(),
+            )
+            try:
+                for step in chat(user_msg, chat_history):
+                    if step == SESSION_EXPIRED_MARKER:
+                        # Session expired — switch to login form
+                        yield (
+                            chat_history,
+                            gr.update(value="", interactive=True),
+                            gr.update(interactive=True),
+                            gr.update(visible=True),
+                            gr.update(visible=False),
+                        )
+                        return
+                    # Add each thinking step as a new assistant message
+                    chat_history.append({"role": "assistant", "content": step})
+                    yield (
+                        chat_history,
+                        gr.update(value="", interactive=True),
+                        gr.update(interactive=True),
+                        gr.update(),
+                        gr.update(),
+                    )
+            except Exception as e:
+                chat_history.append({"role": "assistant", "content": f"❌ Error: {e}"})
+                yield (
+                    chat_history,
+                    gr.update(value="", interactive=True),
+                    gr.update(interactive=True),
+                    gr.update(),
+                    gr.update(),
+                )
 
-        msg.submit(respond, [msg, chatbot], [chatbot])
-        btn.click(respond, [msg, chatbot], [chatbot])
+        msg.submit(respond, [msg, chatbot], [chatbot, msg, btn, login_box, chat_box])
+        btn.click(respond, [msg, chatbot], [chatbot, msg, btn, login_box, chat_box])
 
-    demo.launch(server_name="0.0.0.0", server_port=7861, theme=SoftTheme())
+    demo.queue().launch(server_name="0.0.0.0", server_port=7861, theme=SoftTheme())
