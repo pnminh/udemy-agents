@@ -1,0 +1,10 @@
+[project]
+name = "financial-accounts"
+version = "0.1.0"
+description = "An agent that answers questions about your Robinhood financial accounts"
+dependencies = [
+    "gradio>=6.18.0",
+    "openai>=2.42.0",
+    "python-dotenv>=1.2.2",
+    "robin-stocks>=3.4.0",
+]
