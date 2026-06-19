@@ -30,6 +30,9 @@ if not API_KEY:
 client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
 MODEL = os.getenv("MODEL", "deepseek-v4-flash")
 
+# Robinhood credentials (optional — only used as fallback display name)
+ROBINHOOD_EMAIL = os.getenv("ROBINHOOD_EMAIL", "pnminh232@gmail.com")
+
 # ---------------------------------------------------------------------------
 # Authentication state
 # ---------------------------------------------------------------------------
@@ -59,8 +62,7 @@ if os.path.exists(SESSION_STORAGE):
                 with open(PICKLE_FILE, "rb") as f:
                     auth = pickle.load(f)
                 stored_email = (
-                    getattr(auth, "username", "pnminh232@gmail.com")
-                    or "pnminh232@gmail.com"
+                    getattr(auth, "username", ROBINHOOD_EMAIL) or ROBINHOOD_EMAIL
                 )
 
                 # Use r.login() to fully initialize the session
@@ -622,6 +624,15 @@ if __name__ == "__main__":
             inputs=[login_email, login_password],
             outputs=[login_box, chat_box, login_status, login_btn],
         )
+
+        # --- On page load: set visibility based on current login state ---
+        def set_visibility():
+            return (
+                gr.update(visible=not robin_stocks_logged_in),
+                gr.update(visible=robin_stocks_logged_in),
+            )
+
+        demo.load(set_visibility, outputs=[login_box, chat_box])
 
         # --- Chat handler ---
         def respond(user_msg, chat_history):
