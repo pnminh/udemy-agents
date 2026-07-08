@@ -6,7 +6,11 @@ authors = [{ name = "Your Name", email = "you@example.com" }]
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "crewai[google-genai,tools]==1.14.7",
+    "coursework-lib",
 ]
+
+[tool.uv.sources]
+coursework-lib = { path = "../coursework_lib", editable = true }
 
 [project.scripts]
 debate = "debate.main:run"

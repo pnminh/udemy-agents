@@ -4,13 +4,13 @@ import warnings
 
 from datetime import datetime
 
-from debate.env import load_project_env
+from financial_researcher.env import load_project_env
 
 warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
 
 load_project_env()
 
-from debate.crew import Debate
+from financial_researcher.crew import FinancialResearcher
 
 
 def run():
@@ -18,12 +18,12 @@ def run():
     Run the crew.
     """
     inputs = {
-        'motion': 'AI LLMs',
-        'current_year': str(datetime.now().year)
+        'company': 'Red Hat',
+        'current_date': str(datetime.now().date())
     }
 
     try:
-        Debate().crew().kickoff(inputs=inputs)
+        FinancialResearcher().crew().kickoff(inputs=inputs)
     except Exception as e:
         raise Exception(f"An error occurred while running the crew: {e}")
 
@@ -33,11 +33,11 @@ def train():
     Train the crew for a given number of iterations.
     """
     inputs = {
-        "topic": "AI LLMs",
-        'current_year': str(datetime.now().year)
+        "company": "IBM",
+        "current_date": str(datetime.now().date())
     }
     try:
-        Debate().crew().train(n_iterations=int(sys.argv[1]), filename=sys.argv[2], inputs=inputs)
+        FinancialResearcher().crew().train(n_iterations=int(sys.argv[1]), filename=sys.argv[2], inputs=inputs)
 
     except Exception as e:
         raise Exception(f"An error occurred while training the crew: {e}")
@@ -47,7 +47,7 @@ def replay():
     Replay the crew execution from a specific task.
     """
     try:
-        Debate().crew().replay(task_id=sys.argv[1])
+        FinancialResearcher().crew().replay(task_id=sys.argv[1])
 
     except Exception as e:
         raise Exception(f"An error occurred while replaying the crew: {e}")
@@ -62,7 +62,7 @@ def test():
     }
 
     try:
-        Debate().crew().test(n_iterations=int(sys.argv[1]), eval_llm=sys.argv[2], inputs=inputs)
+        FinancialResearcher().crew().test(n_iterations=int(sys.argv[1]), eval_llm=sys.argv[2], inputs=inputs)
 
     except Exception as e:
         raise Exception(f"An error occurred while testing the crew: {e}")
@@ -83,12 +83,12 @@ def run_with_trigger():
 
     inputs = {
         "crewai_trigger_payload": trigger_payload,
-        "topic": "",
-        "current_year": ""
+        "company": "",
+        "current_date": ""
     }
 
     try:
-        result = Debate().crew().kickoff(inputs=inputs)
+        result = FinancialResearcher().crew().kickoff(inputs=inputs)
         return result
     except Exception as e:
         raise Exception(f"An error occurred while running the crew with trigger: {e}")

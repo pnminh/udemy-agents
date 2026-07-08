@@ -339,6 +339,17 @@ wheels = [
 ]
 
 [[package]]
+name = "coursework-lib"
+version = "0.1.0"
+source = { editable = "../coursework_lib" }
+dependencies = [
+    { name = "crewai", extra = ["google-genai"] },
+]
+
+[package.metadata]
+requires-dist = [{ name = "crewai", extras = ["google-genai"], specifier = "==1.14.7" }]
+
+[[package]]
 name = "crewai"
 version = "1.14.7"
 source = { registry = "https://pypi.org/simple" }
@@ -498,11 +509,15 @@ name = "debate"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "coursework-lib" },
     { name = "crewai", extra = ["google-genai", "tools"] },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "crewai", extras = ["google-genai", "tools"], specifier = "==1.14.7" }]
+requires-dist = [
+    { name = "coursework-lib", editable = "../coursework_lib" },
+    { name = "crewai", extras = ["google-genai", "tools"], specifier = "==1.14.7" },
+]
 
 [[package]]
 name = "defusedxml"

@@ -6,51 +6,47 @@ from coursework_lib import get_llm
 
 
 @CrewBase
-class Debate():
-    """Debate crew"""
+class FinancialResearcher():
+    """FinancialResearcher crew"""
 
     agents: list[BaseAgent]
     tasks: list[Task]
 
     @agent
-    def debater(self) -> Agent:
+    def researcher(self) -> Agent:
         return Agent(
-            config=self.agents_config['debater'], # type: ignore[index]
+            config=self.agents_config['researcher'], # type: ignore[index]
             llm=get_llm(),
             verbose=True
         )
 
     @agent
-    def judge(self) -> Agent:
+    def analyst(self) -> Agent:
         return Agent(
-            config=self.agents_config['judge'], # type: ignore[index]
+            config=self.agents_config['analyst'], # type: ignore[index]
             llm=get_llm(),
             verbose=True
         )
 
     @task
-    def propose(self) -> Task:
+    def research_task(self) -> Task:
         return Task(
-            config=self.tasks_config['propose'], # type: ignore[index]
+            config=self.tasks_config['research_task'], # type: ignore[index]
         )
+
     @task
-    def oppose(self) -> Task:
+    def analysis_task(self) -> Task:
         return Task(
-            config=self.tasks_config['oppose'], # type: ignore[index]
-        )
-    @task
-    def decide(self) -> Task:
-        return Task(
-            config=self.tasks_config['decide'], # type: ignore[index]
+            config=self.tasks_config['analysis_task'], # type: ignore[index]
+            output_file='report.md'
         )
 
     @crew
     def crew(self) -> Crew:
-        """Creates the Debate crew"""
+        """Creates the FinancialResearcher crew"""
         return Crew(
             agents=self.agents,
             tasks=self.tasks,
             process=Process.sequential,
             verbose=True,
-            tracing=True,
         )

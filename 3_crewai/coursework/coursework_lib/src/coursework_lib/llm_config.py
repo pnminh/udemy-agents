@@ -10,13 +10,20 @@ Provider = Literal["gemini", "deepseek"]
 DEFAULT_GEMINI_MODEL = "gemini/gemini-3.1-pro-preview"
 DEFAULT_DEEPSEEK_MODEL = "deepseek/deepseek-v4-flash"
 DEFAULT_GEMINI_LOCATION = "global"
+DEFAULT_GCP_PROJECT = "your-gcp-project-id"
+DEFAULT_DEEPSEEK_API_KEY = "your-deepseek-api-key"
 
 
 def get_llm_provider() -> Provider:
-    provider = os.getenv("DEBATE_LLM_PROVIDER", "gemini").strip().lower()
+    provider = (
+        os.getenv("COURSEWORK_LLM_PROVIDER")
+        or os.getenv("DEBATE_LLM_PROVIDER")
+        or "gemini"
+    ).strip().lower()
     if provider not in ("gemini", "deepseek"):
         raise ValueError(
-            f"Unsupported DEBATE_LLM_PROVIDER={provider!r}. Use 'gemini' or 'deepseek'."
+            f"Unsupported COURSEWORK_LLM_PROVIDER={provider!r}. "
+            "Use 'gemini' or 'deepseek'."
         )
     return provider  # type: ignore[return-value]
 
@@ -33,17 +40,12 @@ def _gcloud_project() -> str | None:
 
 
 def _resolve_gcp_project() -> str:
-    project = (
+    return (
         os.getenv("GOOGLE_CLOUD_PROJECT")
         or os.getenv("GCP_PROJECT")
         or _gcloud_project()
+        or DEFAULT_GCP_PROJECT
     )
-    if not project:
-        raise ValueError(
-            "GOOGLE_CLOUD_PROJECT not set. Add it to .env or run: "
-            "gcloud config set project YOUR_PROJECT_ID"
-        )
-    return project
 
 
 def _configure_vertex_adc() -> None:
@@ -62,14 +64,9 @@ def _build_gemini_llm() -> LLM:
 
 
 def _build_deepseek_llm() -> LLM:
-    api_key = os.getenv("DEEPSEEK_API_KEY")
-    if not api_key:
-        raise ValueError(
-            "DEEPSEEK_API_KEY not set. Add it to .env when DEBATE_LLM_PROVIDER=deepseek."
-        )
     return LLM(
         model=os.getenv("DEEPSEEK_MODEL", DEFAULT_DEEPSEEK_MODEL),
-        api_key=api_key,
+        api_key=os.getenv("DEEPSEEK_API_KEY", DEFAULT_DEEPSEEK_API_KEY),
     )
 
 

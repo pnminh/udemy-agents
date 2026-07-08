@@ -1,4 +1,4 @@
-# LLM is set in crew.py via DEBATE_LLM_PROVIDER (gemini or deepseek).
+# LLM is set in crew.py via COURSEWORK_LLM_PROVIDER (gemini or deepseek).
 
 debater:
   role: >
