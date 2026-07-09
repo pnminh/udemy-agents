@@ -64,10 +64,18 @@ def _build_gemini_llm() -> LLM:
 
 
 def _build_deepseek_llm() -> LLM:
-    return LLM(
-        model=os.getenv("DEEPSEEK_MODEL", DEFAULT_DEEPSEEK_MODEL),
-        api_key=os.getenv("DEEPSEEK_API_KEY", DEFAULT_DEEPSEEK_API_KEY),
-    )
+    llm_kwargs: dict[str, str] = {
+        "model": os.getenv("DEEPSEEK_MODEL", DEFAULT_DEEPSEEK_MODEL),
+        "api_key": os.getenv("DEEPSEEK_API_KEY", DEFAULT_DEEPSEEK_API_KEY),
+    }
+    base_url = os.getenv("DEEPSEEK_BASE_URL") or os.getenv("DEEPSEEK_OPEN_API_ENDPOINT")
+    if base_url:
+        llm_kwargs["base_url"] = base_url
+
+    llm = LLM(**llm_kwargs)
+    # DeepSeek's API rejects OpenAI beta structured output used by output_pydantic.
+    llm.supports_function_calling = lambda: False  # type: ignore[method-assign]
+    return llm
 
 
 @lru_cache(maxsize=2)
