@@ -1,0 +1,17 @@
+coding_task:
+  description: >
+    Achieve this assignment using sandbox tools in this exact order — do not skip or repeat steps:
+    1. Check Sandbox Directory — confirm the sandbox exists.
+    2. List Sandbox Files — see what is already there.
+    3. Write Sandbox File — write solution.py exactly ONCE with your final program.
+       Do not call Write Sandbox File again; a second call will fail.
+    4. Run Sandbox Python File — run solution.py once. Podman retries happen inside the tool;
+       do not rewrite the file or call the LLM again while waiting for Podman.
+    Assignment: {assignment}
+    If Run Sandbox Python File returns FAILED with a script error, summarize the error in your
+    final answer — do not rewrite or rerun.
+  expected_output: >
+    A brief summary: sandbox check result, files listed, confirmation of the single write,
+    the full Run Sandbox Python File result (stdout/stderr/exit_code), and the computed answer.
+  agent: coder
+  output_file: output/solution.md
