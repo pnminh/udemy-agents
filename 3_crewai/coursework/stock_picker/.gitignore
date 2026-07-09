@@ -1,0 +1,8 @@
+.env
+.venv/
+__pycache__/
+.DS_Store
+output/
+report.md
+recommendations.json
+candidate_universe.json
