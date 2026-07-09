@@ -1,0 +1,89 @@
+design_task:
+  description: >
+    Take the high level requirements described here and prepare a detailed design for the engineering team;
+    Here are the requirements: {requirements}
+    IMPORTANT: Only output the design in markdown format, laying out the module(s), classes, functions.
+    Do not actually write any code. Function or method signatures only.
+    You should assign work to the following engineers: backend_engineer, frontend_engineer, test_engineer.
+    The backend_engineer should write the backend python code.
+    The frontend_engineer should make a gradio app in app.py styled to mimic Fidelity's web brokerage UI (light theme).
+    The test_engineer should write unit tests for the backend module.
+    All engineers will be working in the same sandbox directory. There is no directory structure, all files are in the same directory.
+    Everything runs in a uv project with gradio installed.
+    Do not use sandbox tools — write the design only.
+  expected_output: >
+    A detailed design to achieve the requirements, identifying code structure, and assignments to the engineers.
+  agent: engineering_lead
+  output_file: sandbox/design.md
+
+code_task:
+  description: >
+    Write python code that implements the design described by the engineering lead.
+    Here are the requirements: {requirements}
+    Sandbox and Podman were prepared before this crew run ({sandbox_status}; {podman_status}).
+    Use sandbox tools in this exact order at the start — do not skip or repeat steps:
+    1. Check Sandbox Directory — confirm ready (one call).
+    2. List Sandbox Files — see what exists from the design step.
+    3. Read Sandbox File — read design.md if you need the design details.
+    4. Write Sandbox File — write each backend module once. Do not rewrite files; write budget is limited.
+    5. Run Sandbox Python File — only if you wrote a runnable smoke script; otherwise skip.
+    Podman retries happen inside Run Sandbox Python File; do not call the LLM again while waiting.
+    IMPORTANT: Call sandbox tools via tool calls — do not output JSON action plans as your final answer.
+  expected_output: >
+    Backend Python file(s) written to the sandbox implementing the design.
+    Brief summary: sandbox check, files listed, files written, and any run result.
+  agent: backend_engineer
+  context:
+    - design_task
+
+frontend_task:
+  description: >
+    Write a gradio UI in a module app.py that demonstrates the backend code, as described in the design.
+    Assume there is only 1 user, and have the UI be professional, polished, clean.
+    Style the UI to mimic Fidelity's web brokerage (light theme): white background `#FFFFFF`, sections `#F4F4F4`, Fidelity green header/buttons `#368727`, text `#333333`, muted `#666666`, borders `#D9D9D9`, gains `#008000`, losses `#CC0000`. Layout: header bar, account summary cards, holdings table, buy/sell panel, transaction history. Do not use a dark theme.
+    Then write a separate validation script (_validate.py) that imports app.py and confirms the Blocks object
+    constructs without error. The validation script must NOT call `.launch()` — that would block until timeout.
+    Here are the requirements: {requirements}
+    Sandbox and Podman were prepared before this crew run ({sandbox_status}; {podman_status}).
+    Use sandbox tools in this exact order — do not skip or repeat steps:
+    1. Check Sandbox Directory — confirm ready (one call).
+    2. List Sandbox Files — see backend files from the prior task.
+    3. Read Sandbox File — read the backend module(s) and design.md as needed.
+    4. Write Sandbox File — write app.py once with your final UI.
+    5. Write Sandbox File — write _validate.py once.
+    6. Run Sandbox Python File — run _validate.py once. Podman retries happen inside the tool;
+       do not rewrite files or call the LLM again while waiting.
+    If Run returns FAILED, summarize the error — do not rewrite app.py unless stderr shows a clear one-line fix.
+    IMPORTANT: Call sandbox tools via tool calls — do not output JSON action plans as your final answer.
+  expected_output: >
+    app.py and _validate.py written to the sandbox; Run Sandbox Python File result for _validate.py.
+    The UI should look like Fidelity's web brokerage (light theme, green header).
+  agent: frontend_engineer
+  context:
+    - code_task
+    - design_task
+
+test_task:
+  description: >
+    Write unit tests for the backend module in a single test file using the stdlib `unittest` module.
+    Do not write tests for app.py (the gradio frontend).
+    Here are the requirements: {requirements}
+    Sandbox and Podman were prepared before this crew run ({sandbox_status}; {podman_status}).
+    Use sandbox tools in this exact order — do not skip or repeat steps:
+    1. Check Sandbox Directory — confirm ready (one call).
+    2. List Sandbox Files — see backend and frontend files.
+    3. Read Sandbox File — read backend module(s) before writing tests.
+    4. Write Sandbox File — write the test file once.
+    5. Run Sandbox Python File — run the test file once (e.g. `python -m unittest` via a small runner script,
+       or run the test module directly if it has `if __name__ == "__main__"`).
+    If tests fail: you may Read the failing code, Write at most ONE fix to the backend, and Run tests ONE more time.
+    Do not loop indefinitely — at most two Run attempts total. Summarize pass/fail in your answer.
+    Avoid changes that would break app.py or _validate.py.
+    IMPORTANT: Call sandbox tools via tool calls — do not output JSON action plans as your final answer.
+  expected_output: >
+    A single test file in the sandbox and a summary of unit test results (pass/fail, errors if any).
+  agent: test_engineer
+  context:
+    - code_task
+    - design_task
+  output_file: sandbox/test_summary.md
